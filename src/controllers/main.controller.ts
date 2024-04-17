@@ -1,5 +1,5 @@
 import { writeFileSync } from 'fs';
-import { activateMain } from '../services/main.service';
+import { activateMain, genTokens } from '../services/main.service';
 import { Body, Controller, Get, Post, Query, Route } from 'tsoa';
 
 @Route('/')
@@ -21,7 +21,12 @@ export class MainController extends Controller {
 
   @Get('/redirect')
   public async main(@Query('code') code?: string) {
-    activateMain(code);
+    console.log(`Activating main...`);
+    const { accessToken, refreshToken } = await genTokens(code);
+    console.log(`Saving tokens in a file...`);
+    writeFileSync(`${__dirname}/../tokens.json`, JSON.stringify({ accessToken, refreshToken }), 'utf8');
+    console.log(`Tokens saved!`);
+    activateMain();
     return `Application Activated!`;
   }
 }

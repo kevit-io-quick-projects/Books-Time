@@ -1,22 +1,26 @@
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { axiosHelper } from '../helpers/axios.helper';
+import { regenAccessToken } from '../utilities/regenerate-token';
 
-const { OAUTH_URL, REDIRECT_URL } = process.env;
+const { OAUTH_URL, REDIRECT_URL, ZOHO_PROJECTS_API } = process.env;
 
-export const activateMain = async (code: string) => {
+export const activateMain = async () => {
   try {
-    console.log(`Activating main...`);
-    const { accessToken, refreshToken } = await genTokens(code);
-    console.log(`Saving tokens in a file...`);
-    writeFileSync(`${__dirname}/../tokens.json`, JSON.stringify({ accessToken, refreshToken }), 'utf8');
-    console.log(`Tokens saved!`);
+    const client = readFileSync(`${__dirname}/../client.json`, 'utf8');
+    const { clientId, clientSecret } = JSON.parse(client);
+    const tokens = readFileSync(`${__dirname}/../tokens.json`, 'utf8');
+    const { refreshToken } = JSON.parse(tokens);
+    const accessToken = await regenAccessToken(OAUTH_URL, refreshToken, clientId, clientSecret);
+    const portals = await getPortals(accessToken);
+    const projects = await getProjects(portals, accessToken);
+    console.log(projects);
   } catch (error) {
     console.log(`Error in the main Service!`);
     throw error;
   }
 };
 
-const genTokens = async (code: string): Promise<{ accessToken: string; refreshToken: string }> => {
+export const genTokens = async (code: string): Promise<{ accessToken: string; refreshToken: string }> => {
   console.log(`Generating Tokens...`);
   try {
     const client = readFileSync(`${__dirname}/../client.json`, 'utf8');
@@ -28,6 +32,38 @@ const genTokens = async (code: string): Promise<{ accessToken: string; refreshTo
     return { accessToken, refreshToken };
   } catch (error) {
     console.log('Error while generating Tokens!');
+    throw error;
+  }
+};
+
+const getPortals = async (accessToken: string): Promise<number[]> => {
+  console.log(`Fetching Portals...`);
+  try {
+    const url = `${ZOHO_PROJECTS_API}/portals/`;
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    const { data } = await axiosHelper('get', url, null, headers);
+    const portals = data.portals.map((portal) => portal.id);
+    console.log(`Portals Fetched!`);
+    return portals;
+  } catch (error) {
+    console.log(`Error while fetching Portals!`);
+    throw error;
+  }
+};
+const getProjects = async (portals: number[], accessToken: string): Promise<string[]> => {
+  console.log(`Fetching Projects...`);
+  try {
+    console.log(portals);
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    const promises = portals.map((portal) =>
+      axiosHelper('get', `${ZOHO_PROJECTS_API}/portal/${portal}/projects/`, null, headers)
+    );
+    const projectsData = await Promise.all(promises);
+    const projects = projectsData.map((project) => project.data.projects.map((p) => p.id_string));
+    console.log(`Projects Fetched!`);
+    return projects.flat();
+  } catch (error) {
+    console.log(`Error while fetching Projects!`);
     throw error;
   }
 };
