@@ -1,6 +1,7 @@
 import { writeFileSync } from 'fs';
 import { activateMain, genTokens } from '../services/main.service';
 import { Body, Controller, Get, Post, Query, Route } from 'tsoa';
+import { CronJob } from 'cron';
 
 @Route('/')
 export class MainController extends Controller {
@@ -27,6 +28,8 @@ export class MainController extends Controller {
     writeFileSync(`${__dirname}/../tokens.json`, JSON.stringify({ accessToken, refreshToken }), 'utf8');
     console.log(`Tokens saved!`);
     activateMain();
+    const job = new CronJob('0 0 * * *', activateMain);
+    job.start();
     return `Application Activated!`;
   }
 }

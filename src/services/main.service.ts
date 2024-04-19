@@ -19,12 +19,17 @@ export const activateMain = async () => {
       if (projects[portal]) {
         for (const project of projects[portal]) {
           console.log(`Fetching logs of all users for ${project} project...`);
-          const currentDate = getCurrentDate();
-          const prevDate = getCurrentDate('prev');
-          const promises = [currentDate, prevDate].map((date) => getLogs(portal, project, 'all', date, accessToken));
-          const [current, previous] = await Promise.all(promises);
-          if (current.total > previous.total + 0.15 * previous.total)
-            console.log(`Total hours for project ${project} is more than 15% of previous month!`);
+          await compareBillableAndTotal(portal, project, 'all', 'all', accessToken);
+          console.log(`Fetched logs of all users for ${project} project!`);
+          console.log(`Fetching logs of Teams for ${project} project...`);
+          const teams = await getTeams(portal, project, accessToken);
+          if (teams.length)
+            for (const team of teams) {
+              console.log(`Fetching logs for team ${team.name}...`);
+              await compareBillableAndTotal(portal, project, team.users.join(','), team.name, accessToken);
+              console.log(`Fetched logs for team ${team.name}...`);
+            }
+          console.log(`Fetched logs of Teams for ${project} project!`);
         }
       }
     }
@@ -114,5 +119,56 @@ const getLogs = async (
   } catch (error) {
     console.log(`Error while fetching logs for ${project} project!`);
     throw error;
+  }
+};
+export const compareBillableAndTotal = async (
+  portal: string,
+  project: string,
+  users: string,
+  team: string,
+  accessToken: string
+): Promise<void> => {
+  try {
+    const currentDate = getCurrentDate();
+    const prevDate = getCurrentDate('prev');
+    const promises = [currentDate, prevDate].map((date) => getLogs(portal, project, users, date, accessToken));
+    const [current, previous] = await Promise.all(promises);
+    if (current && previous) {
+      if (current.total > previous.total + 0.15 * previous.total)
+        console.log(`Total hours spent by ${team} for project ${project} is more than 15% of previous month!`);
+      if (team === 'all' && current.billable > previous.billable + 0.15 * previous.billable)
+        console.log(`Billable hours spent by ${team} for project ${project} is more than 15% of previous month!`);
+    } else {
+      console.log(`Logs for both current and previous month not available!`);
+    }
+  } catch (error) {
+    console.log(`Error while comparing time spent by ${team}!`);
+    throw error;
+  }
+};
+
+export const getTeams = async (
+  portal: string,
+  project: string,
+  accessToken: string
+): Promise<{ name: string; users: number[] }[]> => {
+  console.log(`Fetching Teams for ${project} project...`);
+  try {
+    const url = `${ZOHO_PROJECTS_API}/portal/${portal}/projects/${project}/usergroups/`;
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    const { data } = await axiosHelper('get', url, null, headers);
+    console.log(`Fetched teams for ${project} project!`);
+    if (!data) return [];
+    return data.userGroups.map((team) => {
+      if (team.userObj.length) {
+        const users = team.userObj.map((user) => user.zuid);
+        return {
+          name: team.groupObj.group_name,
+          users
+        };
+      }
+    });
+  } catch (error) {
+    console.log(`Error while fetching teams for ${project} project!`);
   }
 };
